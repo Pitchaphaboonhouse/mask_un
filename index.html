@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teachable Machine - Camera Fixed Version</title>
+    <title>AI Image Model - Camera Native Fixed</title>
     
     <!-- นำเข้า Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
@@ -16,7 +16,9 @@
             --card-bg: #ffffff;
             --text-main: #1e293b;
             --text-muted: #64748b;
-            --error-color: #ef4444;
+            --error-bg: #fef2f2;
+            --error-text: #ef4444;
+            --error-border: #fee2e2;
         }
 
         body {
@@ -78,7 +80,7 @@
             cursor: not-allowed;
         }
 
-        #camera-box {
+        #camera-wrapper {
             position: relative;
             margin: 24px 0;
             min-height: 280px;
@@ -91,27 +93,23 @@
             overflow: hidden;
         }
 
-        /* ใช้แท็ก Video มาตรฐานช่วยให้เบราว์เซอร์เปิดกล้องได้ง่ายที่สุด */
+        /* ใช้แท็กวิดีโอแท้เพื่อให้เบราว์เซอร์ยอมเปิดกล้องได้ง่ายที่สุด */
         #webcam-video {
             width: 100%;
             height: 280px;
             object-fit: cover;
-            transform: scaleX(-1); /* โหมดกระจกเงา */
+            transform: scaleX(-1); /* โหมดกระจกเงาเพื่อความคุ้นชิน */
             display: none;
             border-radius: 12px;
         }
 
-        #hidden-canvas {
-            display: none;
-        }
-
-        .error-message {
-            color: var(--error-color);
+        .error-box {
+            color: var(--error-text);
             font-size: 13px;
-            padding: 12px;
-            background: #fef2f2;
+            padding: 14px;
+            background: var(--error-bg);
             border-radius: 8px;
-            border: 1px solid #fee2e2;
+            border: 1px solid var(--error-border);
             margin-top: 15px;
             display: none;
             text-align: left;
@@ -150,42 +148,47 @@
             border-radius: 9999px;
             transition: width 0.4s ease;
         }
+
+        #hidden-canvas {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>Teachable Machine Image Model</h2>
-    <div class="subtitle">ระบบวิเคราะห์ข้อมูลภาพจากกล้องอัตโนมัติทุก ๆ 3 วินาที</div>
+    <div class="subtitle">ระบบวิเคราะห์ภาพด้วย AI อัตโนมัติทุก ๆ 3 วินาที</div>
     
-    <button type="button" class="btn-start" id="start-btn" onclick="startCameraProcess()">เปิดใช้งานกล้อง</button>
+    <button type="button" class="btn-start" id="start-btn" onclick="initApp()">เริ่มต้นเปิดกล้อง</button>
     
-    <div id="error-box" class="error-message"></div>
+    <!-- กล่องแสดงข้อความเตือนเมื่อเปิดกล้องไม่ได้ -->
+    <div id="error-message" class="error-box"></div>
     
-    <div id="camera-box">
-        <span id="placeholder-text" style="color: #94a3b8;">กดปุ่มด้านบนเพื่อเริ่มเปิดกล้อง</span>
+    <div id="camera-wrapper">
+        <span id="placeholder-text" style="color: #94a3b8; padding: 10px;">กรุณากดปุ่มเพื่อเชื่อมต่อกล้องเว็บแคม</span>
         <video id="webcam-video" autoplay playsinline muted></video>
     </div>
     
-    <!-- Canvas ลับใช้สำหรับแปลงเฟรมภาพส่งให้โมเดล AI ประมวลผล -->
+    <!-- Canvas ลับที่ใช้แอบก๊อปปี้เฟรมจากภาพวิดีโอส่งไปให้ AI ประมวลผล -->
     <canvas id="hidden-canvas" width="224" height="224"></canvas>
     
     <div id="label-container"></div>
 </div>
 
-<!-- โหลด TensorFlow และ Teachable Machine -->
+<!-- โหลดไลบรารี TensorFlow และ Teachable Machine -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
 <script type="text/javascript">
-    // ลิงก์โมเดล Teachable Machine ของคุณ
+    // ลิงก์โมเดลจาก Teachable Machine ของคุณ
     const URL = "https://teachablemachine.withgoogle.com/models/X4s3_yWKNc/";[cite: 1, 2]
     
     let model, maxPredictions;
     let predictInterval;
 
-    function displayError(msg) {
-        const errorBox = document.getElementById("error-box");
+    function triggerError(msg) {
+        const errorBox = document.getElementById("error-message");
         errorBox.innerHTML = msg;
         errorBox.style.display = "block";
         
@@ -194,27 +197,27 @@
         startBtn.innerText = "ลองเปิดกล้องอีกครั้ง";
     }
 
-    async function startCameraProcess() {
+    async function initApp() {
         const startBtn = document.getElementById("start-btn");
-        const errorBox = document.getElementById("error-box");
-        const placeholderText = document.getElementById("placeholder-text");
+        const errorBox = document.getElementById("error-message");
+        const placeholder = document.getElementById("placeholder-text");
         
         errorBox.style.display = "none";
         startBtn.disabled = true;
-        startBtn.innerText = "กำลังโหลดโมเดล...";
+        startBtn.innerText = "กำลังโหลดโมเดล AI...";
 
         try {
-            // 1. โหลดโมเดล AI ของ Teachable Machine[cite: 1, 2]
+            // 1. โหลดไฟล์โมเดลจากลิงก์[cite: 1, 2]
             const modelURL = URL + "model.json";[cite: 1, 2]
             const metadataURL = URL + "metadata.json";[cite: 1, 2]
             model = await tmImage.load(modelURL, metadataURL);[cite: 1, 2]
             maxPredictions = model.getTotalClasses();[cite: 1, 2]
 
-            startBtn.innerText = "กำลังเข้าถึงกล้องเว็บแคม...";
+            startBtn.innerText = "กำลังเชื่อมต่ออุปกรณ์กล้อง...";
 
-            // 2. เรียกเปิดกล้องผ่านระบบ Native API ของบราวเซอร์โดยตรง เพื่อความเสถียรสูงสุด[cite: 2]
+            // 2. เรียกใช้งานกล้องผ่าน WebRTC API แท้ๆ ของเบราว์เซอร์[cite: 2]
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                throw new Error("บราวเซอร์เวอร์ชันนี้ไม่ยอมรับการเปิดกล้องในโหมดไฟล์ปกติ หรือ อุปกรณ์ไม่มีกล้องติดตั้งอยู่");
+                throw new Error("ระบบความปลอดภัยของเบราว์เซอร์ปฏิเสธคำสั่งเปิดกล้อง (เกิดขึ้นเมื่อเปิดไฟล์ .html ตรงๆ จากเครื่องคอมพิวเตอร์)");
             }
 
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -222,15 +225,15 @@
                 audio: false
             });
 
-            // 3. ปล่อยภาพสตรีมเข้าสู่แท็ก <video>
+            // 3. ปล่อยสตรีมภาพสดเข้าที่แท็กวิดีโอ
             const video = document.getElementById("webcam-video");
             video.srcObject = stream;
             video.style.display = "block";
             
-            if(placeholderText) placeholderText.style.display = "none";
-            document.getElementById("camera-box").style.border = "none";
+            if (placeholder) placeholder.style.display = "none";
+            document.getElementById("camera-wrapper").style.border = "none";
 
-            // 4. สร้างแผงแสดงเปอร์เซ็นต์ผลลัพธ์ (Progress Bar)
+            // 4. สร้างแผงแสดงเปอร์เซ็นต์แบบ Progress Bar ตามจำนวน Class ของโมเดล[cite: 1, 2]
             const labelContainer = document.getElementById("label-container");[cite: 1, 2]
             labelContainer.innerHTML = "";
             for (let i = 0; i < maxPredictions; i++) {[cite: 1, 2]
@@ -238,7 +241,7 @@
                 item.className = "prediction-item";
                 item.innerHTML = `
                     <div class="label-text">
-                        <span class="class-name" id="name-${i}">กำลังตรวจจับ...</span>
+                        <span class="class-name" id="name-${i}">กำลังรอภาพ...</span>
                         <span class="class-prob" id="prob-${i}">0%</span>
                     </div>
                     <div class="progress-bar-bg">
@@ -250,39 +253,40 @@
 
             startBtn.innerText = "ระบบวิเคราะห์กำลังทำงาน...";
 
-            // สั่งทำนายครั้งแรกทันที
-            await runPrediction();
+            // สั่งทำนายผลครั้งแรกทันที
+            await processPrediction();
 
-            // ** ลูปทำงานจับภาพและวิเคราะห์ผลลัพธ์ใหม่ทุกๆ 3 วินาทีพอดี **[cite: 1, 2]
-            predictInterval = setInterval(runPrediction, 3000);
+            // **กำหนดให้ระบบดึงเฟรมภาพไปทำนายผลใหม่ทุกๆ 3 วินาที (3000 มิลลิวินาที)**[cite: 1, 2]
+            predictInterval = setInterval(processPrediction, 3000);
 
         } catch (err) {
             console.error(err);
-            let errorMessage = "<strong>⚠️ ไม่สามารถเปิดกล้องได้:</strong> ";
+            let userAlert = "<strong>❌ เกิดข้อผิดพลาดในการเปิดกล้อง:</strong> ";
+            
             if (err.name === "NotAllowedError" || err.message.includes("permission")) {
-                errorMessage += "คุณกดปฏิเสธสิทธิ์การใช้กล้อง โปรดดูที่สัญลักษณ์รูปแม่กุญแจหรือรูปกล้องด้านบนแถบที่อยู่เว็บ (URL Bar) แล้วกดยอมรับ 'อนุญาตสิทธิ์ (Allow)'";
+                userAlert += "สิทธิ์การเข้าถึงกล้องถูกปฏิเสธ โปรดดูที่แถบกรอกเว็บ (URL Bar) ด้านบนสุด คลิกที่ **ไอคอนรูปแม่กุญแจ** หรือรูปกล้อง แล้วตั้งค่าเป็น **'อนุญาต (Allow)'**";
             } else {
-                errorMessage += err.message + "<br><br>💡 <strong>คำแนะนำเพิ่มเติม:</strong> บราวเซอร์รุ่นใหม่ป้องกันความปลอดภัยโดยห้ามดับเบิ้ลคลิกไฟล์ HTML จากเครื่องเปิดกล้องตรง ๆ ให้แก้ไขด้วยการใช้โปรแกรม **VS Code** แล้วคลิกขวาเลือกเปิดไฟล์ผ่านปลั๊กอิน **Live Server** แทนครับ";
+                userAlert += err.message + "<br><br>💡 <strong>สาเหตุและวิธีแก้ไข:</strong> เบราว์เซอร์ปัจจุบันห้ามไม่ให้เปิดกล้องเมื่อเปิดไฟล์ `.html` แบบดับเบิ้ลคลิกตรงๆ จากในโฟลเดอร์เครื่องคอมพิวเตอร์เพื่อความปลอดภัย<br>โปรดรันโค้ดนี้ผ่านโปรแกรม **VS Code** แล้วคลิกขวาเลือกเปิดด้วยปลั๊กอิน **Live Server** หรืออัปโหลดไฟล์ไปรันบนเว็บที่เป็น HTTPS แทนครับ";
             }
-            displayError(errorMessage);
+            triggerError(userAlert);
         }
     }
 
-    // ฟังก์ชันดึงภาพปัจจุบันส่งให้ AI ทำนายผล (เรียกทุก 3 วินาที)
-    async function runPrediction() {
+    // ฟังก์ชันในการดึงภาพนิ่งจากวิดีโอแล้วส่งไปให้ AI ประมวลผล (ทำงานทุกๆ 3 วินาที)
+    async function processPrediction() {
         if (!model) return;
         
         const video = document.getElementById("webcam-video");
         const canvas = document.getElementById("hidden-canvas");
         const ctx = canvas.getContext("2d");
         
-        // ก๊อปปี้ภาพเฟรมปัจจุบันจากวิดีโอไปใส่ใน Canvas ลับ
+        // ก๊อปปี้ภาพเฟรม ณ เสี้ยววินาทีนั้นจากวิดีโอสดลงไปใน Canvas ลับ
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // ส่งต่อให้ Teachable Machine คำนวณความน่าจะเป็น[cite: 1, 2]
+        // ส่งต่อ Canvas ให้ตัวประมวลผลของ Teachable Machine ทำนายผลลัพธ์[cite: 1, 2]
         const prediction = await model.predict(canvas);[cite: 1, 2]
         
-        // อัปเดตข้อมูลขึ้นหน้าเว็บ
+        // นำผลลัพธ์เปอร์เซ็นต์ที่ได้มาอัปเดตอิงตามแท็ก UI
         for (let i = 0; i < maxPredictions; i++) {[cite: 1, 2]
             const className = prediction[i].className;[cite: 1, 2]
             const probability = prediction[i].probability;
